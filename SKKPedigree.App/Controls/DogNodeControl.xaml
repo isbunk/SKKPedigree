@@ -1,0 +1,52 @@
+<UserControl x:Class="SKKPedigree.App.Controls.DogNodeControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="160" Height="70"
+             Cursor="Hand">
+    <UserControl.Resources>
+        <Style x:Key="NodeBorder" TargetType="Border">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="Background" Value="#F5F5F5"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#EBEBEB"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Border x:Name="OuterBorder" Style="{StaticResource NodeBorder}"
+            BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=UserControl}}">
+        <StackPanel VerticalAlignment="Center">
+            <!-- Dog name -->
+            <TextBlock x:Name="NameText"
+                       Text="{Binding DogName}"
+                       FontWeight="Bold"
+                       FontSize="11"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding DogName}"/>
+
+            <!-- Breed -->
+            <TextBlock x:Name="BreedText"
+                       Text="{Binding Breed}"
+                       FontSize="9"
+                       Foreground="#757575"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding Breed}"/>
+
+            <!-- Reg nr + sex symbol -->
+            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                <TextBlock Text="{Binding RegNumber}"
+                           FontSize="9"
+                           Foreground="#555"
+                           TextTrimming="CharacterEllipsis"/>
+                <TextBlock Margin="4,0,0,0"
+                           FontSize="11"
+                           Text="{Binding SexSymbol}"
+                           Foreground="{Binding SexColor}"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

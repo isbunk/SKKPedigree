@@ -1,0 +1,84 @@
+<UserControl x:Class="SKKPedigree.App.Views.LitterView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </UserControl.Resources>
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Selected dog header -->
+        <Border Grid.Row="0" BorderBrush="#DDD" BorderThickness="1" CornerRadius="6"
+                Padding="10,6" Margin="0,0,0,8" Background="#FFF8E7">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Selected: " Foreground="#888" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding SelectedDog.Name}" FontWeight="Bold" FontSize="14"
+                           VerticalAlignment="Center"/>
+                <TextBlock Text=" — " VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding SelectedDog.Id}" Foreground="#666"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Parents row -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+            <GroupBox Header="Father" Padding="8" Margin="0,0,12,0" MinWidth="200">
+                <StackPanel>
+                    <TextBlock Text="{Binding Father.Name, FallbackValue='Unknown'}" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding Father.Id}" Foreground="#666" FontSize="11"/>
+                </StackPanel>
+            </GroupBox>
+            <GroupBox Header="Mother" Padding="8" MinWidth="200">
+                <StackPanel>
+                    <TextBlock Text="{Binding Mother.Name, FallbackValue='Unknown'}" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding Mother.Id}" Foreground="#666" FontSize="11"/>
+                </StackPanel>
+            </GroupBox>
+            <Button Content="Load siblings from SKK"
+                    Command="{Binding LoadSiblingsFromSkkCommand}"
+                    VerticalAlignment="Bottom" Margin="16,0,0,0"/>
+            <ProgressBar IsIndeterminate="{Binding IsBusy}" Width="100" Height="8"
+                         VerticalAlignment="Bottom" Margin="8,0,0,6"
+                         Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"/>
+        </StackPanel>
+
+        <!-- Siblings WrapPanel -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <WrapPanel x:Name="SiblingsPanel" Orientation="Horizontal" Margin="0,0,0,8">
+                <ItemsControl ItemsSource="{Binding Siblings}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="#CCC" BorderThickness="1" CornerRadius="5"
+                                    Padding="8,5" Margin="4" MinWidth="140">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Sex}" Foreground="#888"
+                                                   FontSize="11" Margin="0,0,6,0"/>
+                                        <TextBlock Text="{Binding BirthDate}" Foreground="#888"
+                                                   FontSize="11"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </WrapPanel>
+        </ScrollViewer>
+
+        <!-- Status -->
+        <TextBlock Grid.Row="3" Text="{Binding Status}"
+                   Foreground="#555" FontSize="11"/>
+    </Grid>
+</UserControl>

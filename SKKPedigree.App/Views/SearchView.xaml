@@ -1,0 +1,66 @@
+<UserControl x:Class="SKKPedigree.App.Views.SearchView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </UserControl.Resources>
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Search row -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                     Width="340" Height="28" VerticalContentAlignment="Center"
+                     Margin="0,0,6,0"
+                     FontSize="13">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Return" Command="{Binding SearchLocalCommand}"/>
+                </TextBox.InputBindings>
+            </TextBox>
+            <Button Content="Search local DB"
+                    Command="{Binding SearchLocalCommand}"
+                    Width="120" Height="28" Margin="0,0,6,0"/>
+            <Button Content="Fetch from SKK"
+                    Command="{Binding FetchFromSkkCommand}"
+                    Width="120" Height="28"/>
+        </StackPanel>
+
+        <!-- Progress indicator -->
+        <ProgressBar Grid.Row="1"
+                     IsIndeterminate="{Binding IsBusy}"
+                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"
+                     Height="4" Margin="0,0,0,6"/>
+
+        <!-- Results DataGrid -->
+        <DataGrid Grid.Row="2"
+                  ItemsSource="{Binding Results}"
+                  SelectedItem="{Binding SelectedDog}"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  SelectionMode="Single"
+                  HeadersVisibility="Column"
+                  CanUserResizeRows="False"
+                  GridLinesVisibility="Horizontal"
+                  MouseDoubleClick="DataGrid_MouseDoubleClick">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Name"            Binding="{Binding Name}"      Width="2*"/>
+                <DataGridTextColumn Header="Breed"           Binding="{Binding Breed}"     Width="2*"/>
+                <DataGridTextColumn Header="Sex"             Binding="{Binding Sex}"       Width="50"/>
+                <DataGridTextColumn Header="Birth Date"      Binding="{Binding BirthDate}" Width="100"/>
+                <DataGridTextColumn Header="Registration Nr" Binding="{Binding Id}"        Width="130"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Status bar -->
+        <TextBlock Grid.Row="3"
+                   Text="{Binding Status}"
+                   Foreground="#555"
+                   FontSize="11"
+                   Margin="0,6,0,0"/>
+    </Grid>
+</UserControl>

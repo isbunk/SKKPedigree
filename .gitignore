@@ -1,0 +1,29 @@
+# Build outputs
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Build artifacts
+*.dll
+*.exe
+*.pdb
+*.cache
+
+# NuGet
+*.nupkg
+packages/
+project.lock.json
+
+# Scratch/temp files
+build_out.txt
+cbuild.txt
+console_out.txt
+
+# Runtime data (DB, logs, progress) — not source code
+*.db
+*.db-shm
+*.db-wal
+scrape_*.txt
+diag_*.html

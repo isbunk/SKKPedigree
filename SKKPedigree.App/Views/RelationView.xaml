@@ -1,0 +1,90 @@
+<UserControl x:Class="SKKPedigree.App.Views.RelationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </UserControl.Resources>
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Dog A picker -->
+        <GroupBox Grid.Row="0" Grid.Column="0" Header="Dog A" Margin="0,0,6,8" Padding="6">
+            <StackPanel>
+                <TextBlock Text="{Binding DogADisplay}" FontWeight="Bold" Margin="0,0,0,4"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBox Text="{Binding DogASearch, UpdateSourceTrigger=PropertyChanged}"
+                             Width="200" Height="26" VerticalContentAlignment="Center" Margin="0,0,4,0"/>
+                    <Button Content="Search" Command="{Binding SearchDogACommand}" Width="60" Height="26"/>
+                </StackPanel>
+                <ListBox ItemsSource="{Binding DogAResults}" MaxHeight="120" Margin="0,4,0,0"
+                         DisplayMemberPath="Name"
+                         SelectionChanged="DogAList_SelectionChanged"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Dog B picker -->
+        <GroupBox Grid.Row="0" Grid.Column="1" Header="Dog B" Margin="6,0,0,8" Padding="6">
+            <StackPanel>
+                <TextBlock Text="{Binding DogBDisplay}" FontWeight="Bold" Margin="0,0,0,4"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBox Text="{Binding DogBSearch, UpdateSourceTrigger=PropertyChanged}"
+                             Width="200" Height="26" VerticalContentAlignment="Center" Margin="0,0,4,0"/>
+                    <Button Content="Search" Command="{Binding SearchDogBCommand}" Width="60" Height="26"/>
+                </StackPanel>
+                <ListBox ItemsSource="{Binding DogBResults}" MaxHeight="120" Margin="0,4,0,0"
+                         DisplayMemberPath="Name"
+                         SelectionChanged="DogBList_SelectionChanged"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Find Relation button -->
+        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,8">
+            <Button Content="Find Relation"
+                    Command="{Binding FindRelationCommand}"
+                    Width="140" Height="30" FontSize="13"/>
+            <ProgressBar IsIndeterminate="{Binding IsBusy}" Width="120" Height="8"
+                         VerticalAlignment="Center" Margin="12,0,0,0"
+                         Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"/>
+        </StackPanel>
+
+        <!-- Inbreeding coefficient -->
+        <Border Grid.Row="2" Grid.ColumnSpan="2"
+                BorderBrush="#CCC" BorderThickness="1" CornerRadius="5"
+                Padding="10,6" Margin="0,0,0,8" Background="#F3F9FF">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Inbreeding Coefficient (Dog A): " VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding InbreedingPercent}"
+                           FontWeight="Bold" FontSize="16" VerticalAlignment="Center"
+                           Foreground="#1565C0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Common ancestors list -->
+        <GroupBox Grid.Row="3" Grid.ColumnSpan="2" Header="Common Ancestors" Padding="6">
+            <DataGrid ItemsSource="{Binding CommonAncestors}"
+                      AutoGenerateColumns="False" IsReadOnly="True"
+                      HeadersVisibility="Column" CanUserResizeRows="False"
+                      GridLinesVisibility="Horizontal">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Name"    Binding="{Binding Dog.Name}" Width="2*"/>
+                    <DataGridTextColumn Header="Breed"   Binding="{Binding Dog.Breed}" Width="2*"/>
+                    <DataGridTextColumn Header="Reg Nr"  Binding="{Binding Dog.Id}" Width="130"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </GroupBox>
+
+        <!-- Status -->
+        <TextBlock Grid.Row="4" Grid.ColumnSpan="2"
+                   Text="{Binding Status}" Foreground="#555" FontSize="11" Margin="0,4,0,0"/>
+    </Grid>
+</UserControl>
