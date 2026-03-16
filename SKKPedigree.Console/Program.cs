@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,81 +15,74 @@ var logPath      = Path.Combine(appData, "scrape_adaptive.txt");
 var progressPath = Path.Combine(appData, "scrape_progress.txt");
 var missingPath  = Path.Combine(appData, "scrape_missing.txt");
 
-Console.WriteLine("=== SKK Adaptive Scraper ===");
+Console.WriteLine("=== SKK Scraper (concurrency=10) ===");
 Console.WriteLine($"DB:       {dbPath}");
-Console.WriteLine($"Log:      {logPath}");
 Console.WriteLine($"Progress: {progressPath}");
-Console.WriteLine($"Missing:  {missingPath}");
+Console.WriteLine($"Ctrl+C to pause — progress is saved automatically.");
 Console.WriteLine();
 
-// ── DB setup + cleanup ─────────────────────────────────────────────────────
 using var db = new Database(dbPath);
 await db.RunMigrationsAsync();
 var dogRepo = new DogRepository(db);
 
-int before   = await dogRepo.GetCountAsync();
-int deleted  = await dogRepo.DeleteIncompleteAsync();
-int after    = before - deleted;
-int hundIds  = (await dogRepo.GetScrapedHundIdsAsync()).Count;
-Console.WriteLine($"Dogs in DB before cleanup : {before:N0}");
-if (deleted > 0)
-    Console.WriteLine($"Deleted incomplete records: {deleted:N0}");
-Console.WriteLine($"Valid dogs remaining      : {after:N0}");
-Console.WriteLine($"HundIds stored (will skip): {hundIds:N0}");
-Console.WriteLine();
-
-// ── Resume from saved progress (delete the file to restart from ID 1) ──────
-if (!File.Exists(progressPath))
-    Console.WriteLine("No progress file — starting from hundid 1.");
+int before  = await dogRepo.GetCountAsync();
+int deleted = await dogRepo.DeleteIncompleteAsync();
+Console.WriteLine($"Dogs in DB : {before - deleted:N0}");
+if (File.Exists(progressPath))
+    Console.WriteLine($"Progress   : resuming from last checkpoint");
 else
-    Console.WriteLine($"Progress file found — will resume from last checkpoint.");
+    Console.WriteLine($"Progress   : starting from HundId 1");
 Console.WriteLine();
 
-// ── Rate display legend ────────────────────────────────────────────────────
-Console.WriteLine("Columns: ID | saved | missing(404) | hard-errors | rate(req/2s) | speed(IDs/min)");
-Console.WriteLine("Rate climbs by +1 req/2s every 100 requests while errors < 3%.");
-Console.WriteLine("Ctrl+C to pause; rerun to resume from saved progress.");
-Console.WriteLine(new string('─', 80));
-Console.WriteLine();
+var cts        = new CancellationTokenSource();
+var wallClock  = Stopwatch.StartNew();
+var lastReport = Stopwatch.StartNew();
+int lastId     = 0;
+int lastSaved  = 0;
 
-// ── Run ────────────────────────────────────────────────────────────────────
-var job = new IdRangeScrapeJob(dogRepo);
-
-var progress = new Progress<(int Id, int Saved, int Missing, int HardErrors, int ReqPerWindow, double IdsPerMin)>(p =>
-{
-    Console.Write(
-        $"\r  ID {p.Id,9:N0} | " +
-        $"saved {p.Saved,7:N0} | " +
-        $"missing {p.Missing,7:N0} | " +
-        $"err {p.HardErrors,4} | " +
-        $"{p.ReqPerWindow * 0.5:F1} req/s | " +
-        $"{p.IdsPerMin,5:F0} IDs/min   ");
-});
-
-var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {
     e.Cancel = true;
     cts.Cancel();
-    Console.WriteLine("\n\nPaused — progress saved. Rerun to resume.");
+    Console.WriteLine("\n\nPaused — rerun to resume.");
 };
+
+Console.WriteLine("Time     | HundId    | Saved    | Missing  | Errors | dogs/sec");
+Console.WriteLine(new string('─', 65));
+
+var job = new IdRangeScrapeJob(dogRepo);
+
+var progress = new Progress<(int Id, int Saved, int Missing, int HardErrors, int ReqPerWindow, double IdsPerMin)>(p =>
+{
+    lastId    = p.Id;
+    lastSaved = p.Saved;
+
+    if (lastReport.Elapsed.TotalSeconds >= 10)
+    {
+        lastReport.Restart();
+        Console.WriteLine(
+            $"{wallClock.Elapsed:hh\\:mm\\:ss} | {p.Id,9:N0} | {p.Saved,8:N0} | {p.Missing,8:N0} | {p.HardErrors,6} | {p.IdsPerMin / 60.0:F1}");
+    }
+});
 
 try
 {
     await job.RunAdaptiveAsync(
-        startId:      1,
-        endId:        IdRangeScrapeJob.MaxHundId,
-        logPath:      logPath,
-        progressPath: progressPath,
+        startId:        1,
+        endId:          IdRangeScrapeJob.MaxHundId,
+        logPath:        logPath,
+        progressPath:   progressPath,
         missingLogPath: missingPath,
-        progress:     progress,
-        ct:           cts.Token);
+        progress:       progress,
+        ct:             cts.Token,
+        rescrape:       true,
+        concurrency:    10);
 
-    Console.WriteLine("\n\nComplete! All IDs processed.");
+    Console.WriteLine("\nComplete! All HundIds processed.");
 }
 catch (OperationCanceledException)
 {
-    Console.WriteLine("\nPaused.");
+    Console.WriteLine($"\nPaused at HundId {lastId:N0}.");
 }
 catch (Exception ex)
 {
@@ -96,3 +90,6 @@ catch (Exception ex)
     Console.WriteLine($"\nFATAL: {ex.Message}");
     Console.ResetColor();
 }
+
+double finalDps = wallClock.Elapsed.TotalSeconds > 0 ? lastSaved / wallClock.Elapsed.TotalSeconds : 0;
+Console.WriteLine($"Session: {lastSaved:N0} dogs in {wallClock.Elapsed:hh\\:mm\\:ss} ({finalDps:F1} dogs/sec)");

@@ -17,12 +17,21 @@ namespace SKKPedigree.Data.Models
         public string? MotherName { get; set; }
         public string? MotherUrl { get; set; }
         public string? LitterId { get; set; }
+        public string? KennelName { get; set; }
+        public string? BreederName { get; set; }
+        public string? BreederCity { get; set; }
+        public string? IdNumber { get; set; }    // stud book / reg ID (lblIDnummer)
+        public string? Color { get; set; }       // coat color (lblFarg)
+        public string? CoatType { get; set; }    // coat type (lblHarlag)
+        public string? Size { get; set; }        // size category (lblStorlek)
+        public string? ChipNumber { get; set; }  // microchip (lblChipnr)
+        public bool IsDeceased { get; set; }     // "Hunden avliden" flag
         public string ScrapedAt { get; set; } = "";
-        public string? RawHtml { get; set; }
 
         // Navigation / scraping helpers (not stored directly in Dog table)
         public List<string> SiblingUrls { get; set; } = new();
         public List<HealthRecord> HealthRecords { get; set; } = new();
         public List<CompetitionResult> Results { get; set; } = new();
+        public List<string> Titles { get; set; } = new();
     }
 }

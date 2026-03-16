@@ -34,8 +34,8 @@ namespace SKKPedigree.Data
             }
 
             await _db.Connection.ExecuteAsync(
-                @"INSERT OR REPLACE INTO Dog (Id, HundId, Name, Breed, Sex, BirthDate, FatherId, MotherId, LitterId, ScrapedAt, RawHtml)
-                  VALUES (@Id, @HundId, @Name, @Breed, @Sex, @BirthDate, @FatherId, @MotherId, @LitterId, @ScrapedAt, @RawHtml)",
+                @"INSERT OR REPLACE INTO Dog (Id, HundId, Name, Breed, Sex, BirthDate, FatherId, MotherId, LitterId, KennelName, BreederName, BreederCity, IdNumber, Color, CoatType, Size, ChipNumber, IsDeceased, ScrapedAt)
+                  VALUES (@Id, @HundId, @Name, @Breed, @Sex, @BirthDate, @FatherId, @MotherId, @LitterId, @KennelName, @BreederName, @BreederCity, @IdNumber, @Color, @CoatType, @Size, @ChipNumber, @IsDeceased, @ScrapedAt)",
                 new
                 {
                     dog.Id,
@@ -47,8 +47,16 @@ namespace SKKPedigree.Data
                     dog.FatherId,
                     dog.MotherId,
                     dog.LitterId,
-                    dog.ScrapedAt,
-                    dog.RawHtml
+                    dog.KennelName,
+                    dog.BreederName,
+                    dog.BreederCity,
+                    dog.IdNumber,
+                    dog.Color,
+                    dog.CoatType,
+                    dog.Size,
+                    dog.ChipNumber,
+                    dog.IsDeceased,
+                    dog.ScrapedAt
                 });
 
             // Delete old records before re-inserting
@@ -57,8 +65,8 @@ namespace SKKPedigree.Data
             {
                 hr.DogId = dog.Id;
                 await _db.Connection.ExecuteAsync(
-                    @"INSERT INTO HealthRecord (DogId, TestType, Result, TestDate)
-                      VALUES (@DogId, @TestType, @Result, @TestDate)", hr);
+                    @"INSERT INTO HealthRecord (DogId, TestType, Grade, Result, TestDate, VetClinic)
+                      VALUES (@DogId, @TestType, @Grade, @Result, @TestDate, @VetClinic)", hr);
             }
 
             await _db.Connection.ExecuteAsync("DELETE FROM CompetitionResult WHERE DogId = @DogId", new { DogId = dog.Id });
@@ -66,9 +74,15 @@ namespace SKKPedigree.Data
             {
                 cr.DogId = dog.Id;
                 await _db.Connection.ExecuteAsync(
-                    @"INSERT INTO CompetitionResult (DogId, EventDate, EventType, Result)
-                      VALUES (@DogId, @EventDate, @EventType, @Result)", cr);
+                    @"INSERT INTO CompetitionResult (DogId, EventDate, Location, EventType, Organiser, Result)
+                      VALUES (@DogId, @EventDate, @Location, @EventType, @Organiser, @Result)", cr);
             }
+
+            await _db.Connection.ExecuteAsync("DELETE FROM Title WHERE DogId = @DogId", new { DogId = dog.Id });
+            foreach (var title in dog.Titles)
+                await _db.Connection.ExecuteAsync(
+                    "INSERT INTO Title (DogId, Title) VALUES (@DogId, @Title)",
+                    new { DogId = dog.Id, Title = title });
         }
 
         public async Task<DogRecord?> GetByIdAsync(string id)
@@ -81,6 +95,8 @@ namespace SKKPedigree.Data
                 "SELECT * FROM HealthRecord WHERE DogId = @id", new { id })).AsList();
             dog.Results = (await _db.Connection.QueryAsync<CompetitionResult>(
                 "SELECT * FROM CompetitionResult WHERE DogId = @id", new { id })).AsList();
+            dog.Titles = (await _db.Connection.QueryAsync<string>(
+                "SELECT Title FROM Title WHERE DogId = @id", new { id })).AsList();
             return dog;
         }
 
@@ -201,6 +217,10 @@ namespace SKKPedigree.Data
         /// </summary>
         public async Task<int> DeleteIncompleteAsync()
         {
+            var filter = "DogId IN (SELECT Id FROM Dog WHERE Name IS NULL OR TRIM(Name) = '')";
+            await _db.Connection.ExecuteAsync($"DELETE FROM HealthRecord WHERE {filter}");
+            await _db.Connection.ExecuteAsync($"DELETE FROM CompetitionResult WHERE {filter}");
+            await _db.Connection.ExecuteAsync($"DELETE FROM Title WHERE {filter}");
             return await _db.Connection.ExecuteAsync(
                 "DELETE FROM Dog WHERE Name IS NULL OR TRIM(Name) = ''");
         }

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 
@@ -48,8 +49,7 @@ CREATE TABLE IF NOT EXISTS Dog (
     FatherId    TEXT,
     MotherId    TEXT,
     LitterId    TEXT,
-    ScrapedAt   TEXT NOT NULL,
-    RawHtml     TEXT
+    ScrapedAt   TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS Litter (
@@ -77,29 +77,65 @@ CREATE TABLE IF NOT EXISTS CompetitionResult (
     FOREIGN KEY (DogId) REFERENCES Dog(Id)
 );
 
+CREATE TABLE IF NOT EXISTS Title (
+    Id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    DogId   TEXT NOT NULL,
+    Title   TEXT NOT NULL,
+    FOREIGN KEY (DogId) REFERENCES Dog(Id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_dog_father ON Dog(FatherId);
 CREATE INDEX IF NOT EXISTS idx_dog_mother ON Dog(MotherId);
 CREATE INDEX IF NOT EXISTS idx_dog_litter ON Dog(LitterId);
+CREATE INDEX IF NOT EXISTS idx_title_dog  ON Title(DogId);
 ";
             await using var cmd = new SqliteCommand(sql, conn);
             await cmd.ExecuteNonQueryAsync();
 
-            // Safe migration: add HundId column to existing databases that predate it
-            try
+            // Safe migrations: add columns to existing databases
+            var dogColumns = new[] {
+                "ALTER TABLE Dog ADD COLUMN HundId INTEGER",
+                "ALTER TABLE Dog ADD COLUMN KennelName TEXT",
+                "ALTER TABLE Dog ADD COLUMN BreederName TEXT",
+                "ALTER TABLE Dog ADD COLUMN BreederCity TEXT",
+                "ALTER TABLE Dog ADD COLUMN IdNumber TEXT",
+                "ALTER TABLE Dog ADD COLUMN Color TEXT",
+                "ALTER TABLE Dog ADD COLUMN CoatType TEXT",
+                "ALTER TABLE Dog ADD COLUMN Size TEXT",
+                "ALTER TABLE Dog ADD COLUMN ChipNumber TEXT",
+                "ALTER TABLE Dog ADD COLUMN IsDeceased INTEGER NOT NULL DEFAULT 0",
+            };
+            var healthColumns = new[] {
+                "ALTER TABLE HealthRecord ADD COLUMN Grade TEXT",
+                "ALTER TABLE HealthRecord ADD COLUMN VetClinic TEXT",
+            };
+            var competitionColumns = new[] {
+                "ALTER TABLE CompetitionResult ADD COLUMN Location TEXT",
+                "ALTER TABLE CompetitionResult ADD COLUMN Organiser TEXT",
+            };
+
+            foreach (var ddl in dogColumns.Concat(healthColumns).Concat(competitionColumns))
             {
-                await using var alter = new SqliteCommand(
-                    "ALTER TABLE Dog ADD COLUMN HundId INTEGER", conn);
-                await alter.ExecuteNonQueryAsync();
-            }
-            catch (SqliteException ex) when (ex.Message.Contains("duplicate column"))
-            {
-                // Column already exists — nothing to do
+                try
+                {
+                    await using var alter = new SqliteCommand(ddl, conn);
+                    await alter.ExecuteNonQueryAsync();
+                }
+                catch (SqliteException ex) when (ex.Message.Contains("duplicate column")) { }
             }
 
             // Create unique index on HundId after ensuring the column exists
             await using var idxCmd = new SqliteCommand(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_dog_hundid ON Dog(HundId)", conn);
             await idxCmd.ExecuteNonQueryAsync();
+
+            // Drop RawHtml — it's 50-100KB per dog and no longer needed (all data now parsed at scrape time)
+            try
+            {
+                await using var dropCol = new SqliteCommand("ALTER TABLE Dog DROP COLUMN RawHtml", conn);
+                await dropCol.ExecuteNonQueryAsync();
+            }
+            catch (SqliteException) { /* column already gone or SQLite version too old */ }
         }
 
         public void Dispose()
