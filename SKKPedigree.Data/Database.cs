@@ -27,6 +27,11 @@ namespace SKKPedigree.Data
                     Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
                     _connection = new SqliteConnection($"Data Source={_dbPath}");
                     _connection.Open();
+                    // 200 MB page cache — critical for write performance on large DBs.
+                    // Default is -2000 (8 MB), giving ~0% cache hit rate at 3+ GB.
+                    using var pragma = _connection.CreateCommand();
+                    pragma.CommandText = "PRAGMA cache_size = -204800; PRAGMA synchronous = NORMAL;";
+                    pragma.ExecuteNonQuery();
                 }
                 return _connection;
             }
@@ -37,6 +42,8 @@ namespace SKKPedigree.Data
             Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
             await using var conn = new SqliteConnection($"Data Source={_dbPath}");
             await conn.OpenAsync();
+            await using (var pc = new SqliteCommand("PRAGMA cache_size = -204800; PRAGMA synchronous = NORMAL;", conn))
+                await pc.ExecuteNonQueryAsync();
 
             var sql = @"
 CREATE TABLE IF NOT EXISTS Dog (

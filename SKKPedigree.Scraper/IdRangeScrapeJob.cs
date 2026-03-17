@@ -72,6 +72,34 @@ namespace SKKPedigree.Scraper
         }
 
         /// <summary>
+        /// Shared client for PostBack requests — no cookies, so each PostBack runs as an
+        /// independent session. All 4 PostBacks per dog can then be fired in parallel.
+        /// ASP.NET validates viewstate via MAC (machine key), not session cookie, so
+        /// cross-session PostBacks work as long as the server doesn't set ViewStateUserKey.
+        /// </summary>
+        private static readonly HttpClient _postBackClient = CreatePostBackClient();
+
+        private static HttpClient CreatePostBackClient()
+        {
+            var handler = new SocketsHttpHandler
+            {
+                MaxConnectionsPerServer  = 100,
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                AutomaticDecompression   = System.Net.DecompressionMethods.GZip
+                                         | System.Net.DecompressionMethods.Deflate,
+                UseCookies               = false,   // no session — PostBacks are sessionless
+            };
+            var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+            client.DefaultRequestHeaders.Add("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/124.0 Safari/537.36");
+            client.DefaultRequestHeaders.Add("Accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            client.DefaultRequestHeaders.Add("Accept-Language", "sv-SE,sv;q=0.9,en;q=0.8");
+            return client;
+        }
+
+        /// <summary>
         /// Runs an adaptive scrape across [startId..endId].
         /// Progress tuple: (CurrentId, TotalSaved, TotalMissing, TotalHardErrors, ReqPerWindow, IdsPerMin)
         /// concurrency=1 uses the sequential adaptive path; >1 fires that many dogs in parallel.
@@ -87,22 +115,37 @@ namespace SKKPedigree.Scraper
             bool    rescrape    = false,
             int     concurrency = 1)
         {
+            // If startId > endId the caller wants a reverse (high→low) scan.
+            bool reverse = startId > endId;
+
             Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-            _log = new StreamWriter(logPath, append: true) { AutoFlush = true };
+            _log = new StreamWriter(
+                new System.IO.FileStream(logPath, System.IO.FileMode.Append,
+                    System.IO.FileAccess.Write, System.IO.FileShare.ReadWrite))
+                { AutoFlush = true };
 
             await using var missingLog = new StreamWriter(missingLogPath, append: true) { AutoFlush = true };
 
-            // Resume: advance past already-done IDs, but never go below startId
+            // Resume logic: progress file stores the last processed HundId.
+            // Forward: resume from lastDone+1 (must be > startId).
+            // Reverse: resume from lastDone-1 (must be < startId, the high bound).
             int resumeFrom = startId;
             if (File.Exists(progressPath) &&
-                int.TryParse(File.ReadAllText(progressPath).Trim(), out int lastDone) &&
-                lastDone + 1 > startId)
+                int.TryParse(File.ReadAllText(progressPath).Trim(), out int lastDone))
             {
-                resumeFrom = lastDone + 1;
-                Log($"Resuming from hundid {resumeFrom} (last done: {lastDone})");
+                if (!reverse && lastDone + 1 > startId)
+                {
+                    resumeFrom = lastDone + 1;
+                    Log($"Resuming from hundid {resumeFrom} (last done: {lastDone})");
+                }
+                else if (reverse && lastDone - 1 < startId)
+                {
+                    resumeFrom = lastDone - 1;
+                    Log($"Resuming from hundid {resumeFrom} (last done: {lastDone})");
+                }
             }
 
-            Log($"=== Scrape started [{resumeFrom}..{endId}], concurrency={concurrency}, windowMs={WindowMs} ===");
+            Log($"=== Scrape started [{resumeFrom}..{endId}]{(reverse ? " REVERSE" : "")}, concurrency={concurrency}, windowMs={WindowMs} ===");
 
             HashSet<int> scrapedHundIds;
             if (rescrape)
@@ -124,12 +167,12 @@ namespace SKKPedigree.Scraper
                 if (concurrency > 1)
                 {
                     await RunConcurrentAsync(resumeFrom, endId, progressPath, missingLog,
-                        reqPerWindow, scrapedHundIds, progress, ct, concurrency);
+                        reqPerWindow, scrapedHundIds, progress, ct, concurrency, reverse);
                 }
                 else
                 {
                     await RunSequentialAsync(resumeFrom, endId, progressPath, missingLog,
-                        reqPerWindow, scrapedHundIds, progress, ct);
+                        reqPerWindow, scrapedHundIds, progress, ct, reverse);
                 }
 
                 Log($"=== Run ended. {DateTime.Now:yyyy-MM-dd HH:mm} ===");
@@ -147,7 +190,7 @@ namespace SKKPedigree.Scraper
             int resumeFrom, int endId, string progressPath, StreamWriter missingLog,
             int reqPerWindow, HashSet<int> scrapedHundIds,
             IProgress<(int Id, int Saved, int Missing, int HardErrors, int ReqPerWindow, double IdsPerMin)>? progress,
-            CancellationToken ct)
+            CancellationToken ct, bool reverse = false)
         {
             int phaseRequests  = 0;
             int phaseHardErr   = 0;
@@ -159,7 +202,7 @@ namespace SKKPedigree.Scraper
             var rateWatch = Stopwatch.StartNew();
             int rateCount = 0;
 
-            for (int id = resumeFrom; id <= endId; id++)
+            for (int id = resumeFrom; reverse ? id >= endId : id <= endId; id += reverse ? -1 : 1)
             {
                 ct.ThrowIfCancellationRequested();
 
@@ -229,7 +272,7 @@ namespace SKKPedigree.Scraper
                         phaseHardErr++;
                         totalHardError++;
                         await Task.Delay(30_000, ct);
-                        id--;  // retry same ID
+                        id += reverse ? 1 : -1;  // undo the loop step to retry same ID
                         continue;
 
                     case FetchStatus.Timeout:
@@ -261,9 +304,9 @@ namespace SKKPedigree.Scraper
             int resumeFrom, int endId, string progressPath, StreamWriter missingLog,
             int reqPerWindow, HashSet<int> scrapedHundIds,
             IProgress<(int Id, int Saved, int Missing, int HardErrors, int ReqPerWindow, double IdsPerMin)>? progress,
-            CancellationToken ct, int concurrency)
+            CancellationToken ct, int concurrency, bool reverse = false)
         {
-            Log($"Concurrent mode: {concurrency} independent sessions, {reqPerWindow * 0.5:F1} req/s stagger.");
+            Log($"Concurrent mode: {concurrency} independent sessions, {reqPerWindow * 0.5:F1} req/s stagger{(reverse ? ", REVERSE" : "")}.");
 
             // One HttpClient per worker = one independent ASP.NET session per worker.
             var clientPool = new System.Collections.Concurrent.ConcurrentBag<HttpClient>();
@@ -284,9 +327,9 @@ namespace SKKPedigree.Scraper
             int rateCount      = 0;
 
             var rateWatch = Stopwatch.StartNew();
-            var tasks     = new List<Task>(endId - resumeFrom + 1);
+            var tasks     = new List<Task>(Math.Min(concurrency * 4, 1024));
 
-            for (int id = resumeFrom; id <= endId; id++)
+            for (int id = resumeFrom; reverse ? id >= endId : id <= endId; id += reverse ? -1 : 1)
             {
                 ct.ThrowIfCancellationRequested();
 
@@ -298,6 +341,10 @@ namespace SKKPedigree.Scraper
 
                 int delayMs = WindowMs / reqPerWindow;
                 if (delayMs > 0) await Task.Delay(delayMs, ct);
+
+                // Periodically evict completed tasks to prevent unbounded memory growth
+                if (id % 500 == 0)
+                    tasks.RemoveAll(t => t.IsCompleted);
 
                 await sem.WaitAsync(ct);
                 clientPool.TryTake(out var workerClient);
@@ -406,11 +453,16 @@ namespace SKKPedigree.Scraper
                 {
                     var dog     = _parser.ParseFromHtml(html);
                     var pageUrl = $"{BaseUrl}Hund.aspx?hundid={id}";
-                    dog.HealthRecords = await FetchPostBackSectionAsync(pageUrl, html, "btnVeterinar", DogScraper.ParseHealthFromPostBack, http, ct);
+
+                    // PostBacks must use the same session (http) as the initial GET —
+                    // the server validates the session cookie alongside the viewstate.
+                    // Sequential is correct: server serializes same-session requests anyway.
+                    dog.HealthRecords = await FetchPostBackSectionAsync(pageUrl, html, "btnVeterinar", DogScraper.ParseHealthFromPostBack,      http, ct);
                     dog.Results       = await FetchPostBackSectionAsync(pageUrl, html, "btnTavling",   DogScraper.ParseCompetitionFromPostBack, http, ct);
-                    dog.Titles        = await FetchPostBackSectionAsync(pageUrl, html, "btnTitlar",    DogScraper.ParseTitlesFromPostBack, http, ct);
+                    dog.Titles        = await FetchPostBackSectionAsync(pageUrl, html, "btnTitlar",    DogScraper.ParseTitlesFromPostBack,      http, ct);
                     var breeder       = await FetchPostBackSectionAsync(pageUrl, html, "btnUppfodare",
-                        h => { var b = DogScraper.ParseBreederFromPostBack(h); return new List<(string?,string?,string?)> { b }; }, http, ct);
+                        h => { var b = DogScraper.ParseBreederFromPostBack(h); return new List<(string?,string?,string?)> { b }; },
+                        http, ct);
                     if (breeder.Count > 0)
                     {
                         dog.KennelName  = breeder[0].Item1;

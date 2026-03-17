@@ -6,16 +6,30 @@ using System.Threading.Tasks;
 using SKKPedigree.Data;
 using SKKPedigree.Scraper;
 
+// CLI args: [--db <name>] [--start <hundid>] [--end <hundid>]
+// Example: dotnet run --project SKKPedigree.Console -- --db shard2 --start 800001 --end 1600000
+string shardName  = "pedigree";
+int    argStart   = 1;
+int    argEnd     = IdRangeScrapeJob.MaxHundId;
+
+for (int i = 0; i < args.Length; i++)
+{
+    if (args[i] == "--db"    && i + 1 < args.Length) shardName = args[++i];
+    if (args[i] == "--start" && i + 1 < args.Length) argStart  = int.Parse(args[++i]);
+    if (args[i] == "--end"   && i + 1 < args.Length) argEnd    = int.Parse(args[++i]);
+}
+
 var appData = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SKKPedigree");
 Directory.CreateDirectory(appData);
 
-var dbPath       = Path.Combine(appData, "pedigree.db");
-var logPath      = Path.Combine(appData, "scrape_adaptive.txt");
-var progressPath = Path.Combine(appData, "scrape_progress.txt");
-var missingPath  = Path.Combine(appData, "scrape_missing.txt");
+var dbPath       = Path.Combine(appData, shardName + ".db");
+var logPath      = Path.Combine(appData, shardName + "_log.txt");
+var progressPath = Path.Combine(appData, shardName + "_progress.txt");
+var missingPath  = Path.Combine(appData, shardName + "_missing.txt");
 
-Console.WriteLine("=== SKK Scraper (concurrency=10) ===");
+Console.WriteLine("=== SKK Scraper (concurrency=20) ===");
+Console.WriteLine($"Shard:    {shardName}  [{argStart:N0} – {argEnd:N0}]");
 Console.WriteLine($"DB:       {dbPath}");
 Console.WriteLine($"Progress: {progressPath}");
 Console.WriteLine($"Ctrl+C to pause — progress is saved automatically.");
@@ -52,6 +66,11 @@ Console.WriteLine(new string('─', 65));
 
 var job = new IdRangeScrapeJob(dogRepo);
 
+// Archive worker — runs in the background, moves completed ranges out of the working DB
+// every 5 minutes so it stays small and insert-fast.
+var archivePath = Path.Combine(appData, shardName + "_archive.db");
+_ = SKKPedigree.Console.ArchiveWorker.RunAsync(dbPath, archivePath, () => lastId, logPath: logPath, ct: cts.Token);
+
 var progress = new Progress<(int Id, int Saved, int Missing, int HardErrors, int ReqPerWindow, double IdsPerMin)>(p =>
 {
     lastId    = p.Id;
@@ -68,15 +87,15 @@ var progress = new Progress<(int Id, int Saved, int Missing, int HardErrors, int
 try
 {
     await job.RunAdaptiveAsync(
-        startId:        1,
-        endId:          IdRangeScrapeJob.MaxHundId,
+        startId:        argStart,
+        endId:          argEnd,
         logPath:        logPath,
         progressPath:   progressPath,
         missingLogPath: missingPath,
         progress:       progress,
         ct:             cts.Token,
         rescrape:       true,
-        concurrency:    10);
+        concurrency:    20);
 
     Console.WriteLine("\nComplete! All HundIds processed.");
 }
